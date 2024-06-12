@@ -7,11 +7,11 @@ import https from "https";
 
 export const dynamic = "force-dynamic";
 
-const MAX_WORKER_COUNT = 10;
+const MAX_WORKER_COUNT = 5;
 let cur_worker_count = 0;
 
 interface IGeneratePrompt {
-    name: string,
+    index: string,
     prompt: string,
     make_instrumental?: Boolean,
     model?: string
@@ -193,9 +193,17 @@ export async function POST(req: NextRequest) {
       queue = await csv().fromString(csv_string);
       total_count = queue.length;
 
+      let i = 0;
+      while (fs.existsSync(`../download-${run_name}-${i}`)) {
+        i++;
+      }
+      fs.mkdirSync(`../download-${run_name}-${i}`);
+      const directory = `../download-${run_name}-${i}`;
+
       // 2. Start worker x 10
 
-      const worker = async () => {
+      const worker = async (id:number) => {
+        cur_worker_count++;
         while (queue.length > 0) {
           // 1. Yield
           await new Promise(res => setTimeout(res));
@@ -206,45 +214,84 @@ export async function POST(req: NextRequest) {
           queue.pop();
 
           // 3. Start Generating
-          const content = await (await sunoApi).generate(
-            item.prompt,
-            Boolean(item.make_instrumental),
-            item.model || DEFAULT_MODEL,
-            true
-          );
+          let content:any;
+          try {
+            content = await (await sunoApi).generate(
+              item.prompt,
+              Boolean(item.make_instrumental),
+              item.model || DEFAULT_MODEL,
+              true
+            );
+          } catch(e) {
+            // Push item back to queue
+            queue.push(item);
+            console.error(e);
+
+            await new Promise(res => setTimeout(res, 1000));
+            continue;
+          }
           
           
           // 4. Download Audio and Record to CSV
           for (let i = 0; i < content.length; i++) {
             const audio_url = content[i]["audio_url"] || "";
-            const file_name = `${item.name}-${i}.mp3`
+            const file_name = `${item.index}-${i}.mp3`;
 
-            await new Promise(resolve => {
-              const file = fs.createWriteStream(`../download/${file_name}`);
+            (new Promise((resolve, reject) => {
+              const file = fs.createWriteStream(`${directory}/${file_name}`);
               const request = https.get(audio_url, response => {
                 response.pipe(file);
  
                 file.on("finish", () => {
                   resolve(undefined)
-                })
-              })
-            });
+                });
 
-            writer.writeObjectLine({
-                name: item.name,
-                index: i,
+                file.on("error", (err) => {
+                  reject(err)
+                }).on("error", (err) => {
+                  reject(err)
+                });
+              })
+            })).then(() => {
+              return writer.writeObjectLine({
+                index: item.index,
+                cnt: i,
                 title: content[i]["title"],
                 file_name: file_name,
                 lyrics: content[i]["lyric"]
+              })
             }).then(() => {
-                console.log(`[Worker] ${item.name} - ${i} Done`)
-            })
+              console.log(`Download: ${item.index} - ${i} Done`)
+            }).catch((e) => {
+              console.error(`Download: ${item.index} - ${i} Failed`);
+              // Write to log
+              fs.appendFileSync('../download/download_error.txt', `${item.index} - ${i} ${content[i]["title"]}\n${e.toString()}`);
+            });
           }
+
+          // 5. Wait till status becomes complete
+          while (1) {
+            if (content.every((item: any) => item.status === 'complete')) {
+              break;
+            }
+
+            try {
+                content = await (await sunoApi).get(content.map((item: any) => item.id));
+            } catch(e) {
+                continue;
+            }
+          }
+
+          console.log(`[Worker ${id}] ${item.index} Done`)
         }
+        cur_worker_count--;
+        console.log(`Worker ${id} Exited, ${cur_worker_count} remaining`);
       }
 
       for (let worker_num = 0; worker_num < MAX_WORKER_COUNT; worker_num++) {
-        worker();
+        worker(worker_num);
+        // Wait 1000ms before starting
+        await new Promise(res => setTimeout(res, 1000));
       }
       
       return new NextResponse(JSON.stringify({}), {

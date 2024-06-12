@@ -15,7 +15,7 @@ export default function Batch() {
     const [csv_string, set_csv_string] = React.useState('');
 
     function submit_run() {
-        axios.post('/api/batch_generate_custom', {
+        axios.post('/api/batch_generate', {
             run_name, csv_string
         })
     }

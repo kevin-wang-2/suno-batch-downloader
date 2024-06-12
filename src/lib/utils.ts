@@ -1,6 +1,7 @@
 import pino from "pino";
 
 const logger = pino();
+logger.level = 'warn';
 
 /**
  * Pause for a specified number of seconds.

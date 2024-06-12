@@ -6,6 +6,7 @@ import { CookieJar } from "tough-cookie";
 import { sleep } from "@/lib/utils";
 
 const logger = pino();
+logger.level = 'error';
 export const DEFAULT_MODEL = "chirp-v3-5";
 
 
