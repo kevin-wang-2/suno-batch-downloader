@@ -394,6 +394,13 @@ class SunoApi {
       monthly_usage: response.data.monthly_usage,
     };
   }
+
+  public async get_wav_file(clip_id: string): Promise<object> {
+    await this.keepAlive(false);
+    await this.client({method: 'post', url: `${SunoApi.BASE_URL}/api/gen/${clip_id}/convert_wav/`});
+    let response = await this.client.get(`${SunoApi.BASE_URL}/api/gen/${clip_id}/wav_file`);
+    return { wav_file_url: response.data["wav_file_url"] };
+  }
 }
 
 const newSunoApi = async (cookie: string) => {
