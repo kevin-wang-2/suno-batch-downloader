@@ -9,12 +9,20 @@ export async function GET(req: NextRequest) {
     try {
       const url = new URL(req.url);
       const songIds = url.searchParams.get('ids');
+      const page_query = url.searchParams.get('page');
+      let page:number = 0;
+
       let audioInfo = [];
+
+      if (page_query) {
+        page = parseInt(page_query);
+      }
+
       if (songIds && songIds.length > 0) {
         const idsArray = songIds.split(',');
-        audioInfo = await (await sunoApi).get(idsArray);
+        audioInfo = await (await sunoApi).get(idsArray, page);
       } else {
-        audioInfo = await (await sunoApi).get();
+        audioInfo = await (await sunoApi).get(undefined, page);
       }
 
       return new NextResponse(JSON.stringify(audioInfo), {

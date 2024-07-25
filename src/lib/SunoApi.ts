@@ -341,12 +341,23 @@ class SunoApi {
    * @param songIds An optional array of song IDs to retrieve information for.
    * @returns A promise that resolves to an array of AudioInfo objects.
    */
-  public async get(songIds?: string[]): Promise<AudioInfo[]> {
+  public async get(songIds?: string[], page:number = 0): Promise<AudioInfo[]> {
     await this.keepAlive(false);
     let url = `${SunoApi.BASE_URL}/api/feed/`;
+
+    let query = Array<string>();
+
     if (songIds) {
-      url = `${url}?ids=${songIds.join(',')}`;
+      query.push(`ids=${songIds.join(',')}`);
     }
+    if (page > 0) {
+      query.push(`page=${page}`);
+    }
+
+    if (query.length > 0) {
+      url += '?' + query.join('&');
+    }
+
     logger.info("Get audio status: " + url);
     const response = await this.client.get(url, {
       // 3 seconds timeout
@@ -395,7 +406,7 @@ class SunoApi {
     };
   }
 
-  public async get_wav_file(clip_id: string): Promise<object> {
+  public async get_wav_file(clip_id: string): Promise<any> {
     await this.keepAlive(false);
     await this.client({method: 'post', url: `${SunoApi.BASE_URL}/api/gen/${clip_id}/convert_wav/`});
     let response = await this.client.get(`${SunoApi.BASE_URL}/api/gen/${clip_id}/wav_file`);
