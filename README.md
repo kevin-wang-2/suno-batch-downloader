@@ -16,6 +16,8 @@
   <a href="https://www.producthunt.com/products/gcui-art-suno-api-open-source-sunoai-api/reviews?utm_source=badge-product_review&utm_medium=badge&utm_souce=badge-gcui&#0045;art&#0045;suno&#0045;api&#0045;open&#0045;source&#0045;sunoai&#0045;api" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=577408&theme=light" alt="gcui&#0045;art&#0047;suno&#0045;api&#0058;Open&#0045;source&#0032;SunoAI&#0032;API - Use&#0032;API&#0032;to&#0032;call&#0032;the&#0032;music&#0032;generation&#0032;AI&#0032;of&#0032;suno&#0046;ai&#0046; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 </p>
 
+> 🔥 Check out our new open-source project: [Album AI - Chat with your gallery using plain language!](https://github.com/gcui-art/album-ai)
+
 ![suno-api banner](https://github.com/gcui-art/suno-api/blob/main/public/suno-banner.png)
 
 ## Introduction
@@ -318,6 +320,7 @@ LGPL-3.0 or later
 - Project repository: [github.com/gcui-art/suno-api](https://github.com/gcui-art/suno-api)
 - Suno.ai official website: [suno.ai](https://suno.ai)
 - Demo: [suno.gcui.ai](https://suno.gcui.ai)
+- Album AI: [Auto generate image metadata and chat with the album. RAG + Album.](https://github.com/gcui-art/album-ai)
 
 ## Statement
 
