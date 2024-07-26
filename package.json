@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@types/archiver": "^6.0.2",
     "@vercel/analytics": "^1.2.2",
+    "archiver": "^7.0.1",
     "audio-loader": "^1.0.3",
     "axios": "^1.6.8",
     "axios-cookiejar-support": "^5.0.0",

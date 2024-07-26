@@ -9,9 +9,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { csv_string, run_name } = body;
 
-    const run = downloader.start_run(run_name, csv_string);
+    const run = await downloader().start_run(run_name, csv_string);
 
-    return new NextResponse(JSON.stringify(run), {
+    return new NextResponse(JSON.stringify({run_name: run.run_name}), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

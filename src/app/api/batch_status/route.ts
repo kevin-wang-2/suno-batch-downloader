@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
     if (run_name === null) {
 
-        const jobs = await downloader.get_all_running_jobs();
+        const jobs = await downloader().get_all_running_jobs();
 
         return new NextResponse(JSON.stringify(jobs), {
             status: 200,
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
             }
           });
     } else {
-        const info = await downloader.check_run_status(run_name);
+        const info = await downloader().check_run_status(run_name);
 
         return new NextResponse(JSON.stringify(info), {
             status: 200,

@@ -5,7 +5,7 @@ import https from "https";
 
 const MAX_WORKER_COUNT = 4;
 
-interface IGeneratePrompt {
+export interface IGeneratePrompt {
     run_name: string,
     index: string,
     prompt: string,
@@ -14,16 +14,27 @@ interface IGeneratePrompt {
     model?: string,
 }
 
-interface IRunStatus {
+export interface IRunStatus {
     run_name: string,
     ended: boolean,
     remaining_count?: number,
 }
 
-interface IRun {
+export interface IRun {
     run_name: string,
     audio_folder: string,
     csv_file: string
+}
+
+export interface ICSVRow {
+    index: string,
+    cnt: number,
+    title: string,
+    file_name: string,
+    lyrics: string,
+    song_id: string,
+    audio_url: string,
+    error: string
 }
 
 function getExt(url: string) {
@@ -322,7 +333,7 @@ class Downloader {
                         lyrics: content[i]["lyric"],
                         song_id: content[i]["id"],
                         audio_url: audio_url,
-                        error: ""
+                        error: "Download Failed"
                     })
                 }));
             }
@@ -361,6 +372,7 @@ class Downloader {
     }
 
     constructor() {
+        console.log('Downloader Started');
         for (let i = 0; i < MAX_WORKER_COUNT; i++) {
             this.worker(i);
         }
@@ -421,6 +433,29 @@ class Downloader {
         });
         return result;
     }
+
+    get_run_csv(run_name: string) {
+        return `./src/resources/downloads/${run_name}.csv`
+    }
+
+    get_audio_folder(run_name: string) {
+        return `./src/resources/downloads/download-${run_name}`
+    }
 }
 
-export const downloader = new Downloader();
+let downloader_instance: Downloader;
+
+if (process.env.NODE_ENV === 'production') {
+    downloader_instance = new Downloader();
+} else {
+    // Check global 
+    // @ts-ignore
+    if (!global.downloader_instance) {
+        // @ts-ignore
+        global.downloader_instance = new Downloader();
+    }
+    // @ts-ignore
+    downloader_instance = global.downloader_instance;
+}
+
+export const downloader = () => downloader_instance;
