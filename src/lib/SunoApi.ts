@@ -415,8 +415,14 @@ class SunoApi {
 }
 
 const newSunoApi = async (cookie: string) => {
-  const sunoApi = new SunoApi(cookie);
-  return await sunoApi.init();
+  // Global
+  // @ts-ignore
+  if (!global.sunoApi) {
+    const sunoApi = new SunoApi(cookie);
+    const api = await sunoApi.init();
+  }
+  // @ts-ignore
+  return global.sunoApi;
 }
 
 if (!process.env.SUNO_COOKIE) {
