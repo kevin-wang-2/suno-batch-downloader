@@ -231,6 +231,10 @@ class Downloader {
         }
         this.queue = this.queue.concat(queue);
 
+        queue.forEach((item) => {
+            item.status = 4;
+        });
+
         // 3. Create items in maps
 
         this.run_info.set(run_name, {
@@ -257,7 +261,7 @@ class Downloader {
     }
 
     async get_all_running_jobs() {
-        return Array.from(this.run_info.values()).filter((item) => !item.ended);
+        return Array.from(this.run_info.values());
     }
 
     get_run_csv(run_name: string) {

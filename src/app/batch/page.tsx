@@ -1,11 +1,12 @@
 'use client'
 import React from 'react';
-import Section from '../components/Section';
 
 import axios from 'axios';
-import { IRunStatus, ISong, statusMap } from '@/lib/BatchDownloaderUtils';
+import { IRunStatus, IGeneratePrompt, ISong, statusMap } from '@/lib/BatchDownloaderUtils';
 import csv from "csvtojson";
 import { CSVFormatter } from '@/lib/CSVFormatter';
+
+import Kanban from '@/app/components/batch/Kanban';
 
 const escapedNewLineToLineBreakTag = (string: string) => string.split('\n').map((item, index) => (index === 0) ? item : [<br key={index} />, item])
 
@@ -140,13 +141,15 @@ export default function Batch() {
     const [real_run_name, set_real_run_name] = React.useState('');
     const [job_count, set_job_count] = React.useState(0);
     const [show_run_status, set_show_run_status] = React.useState(false);
-    const [csv_data, set_csv_data] = React.useState(Array<ISong>());
+    const [song_data, set_song_data] = React.useState(Array<ISong>());
     const [check_interval, set_check_interval] = React.useState<NodeJS.Timeout>();
 
 
     const [credit, set_credit] = React.useState(-1);
     const [total_credit, set_total_credit] = React.useState(0);
     const [credit_fetched, set_credit_fetched] = React.useState(false);
+
+    const [prompt_data, set_prompt_data] = React.useState<Array<IGeneratePrompt>>([]);
 
     // Get the credit from the server
     React.useEffect(() => {
@@ -158,6 +161,11 @@ export default function Batch() {
     }, []);
 
     async function submit_run(run_name: string, csv_string: string) {
+        if (check_interval) {
+            clearInterval(check_interval);
+            set_check_interval(undefined);
+        }
+        
         const result = await axios.post('/api/batch_generate', {
             run_name, csv_string
         });
@@ -171,12 +179,14 @@ export default function Batch() {
         const check_result = await axios.get(`/api/batch_status?run_name=${result.data['run_name']}`);
         const run_status: IRunStatus = check_result.data;
 
+        set_prompt_data(run_status.prompts);
+
         set_job_count(run_status.remaining_count || 0);
 
         set_show_run_status(true);
 
         const csv = await axios.get(`/api/fetch_batch_song_data?run_name=${result.data['run_name']}`);
-        set_csv_data(csv.data);
+        set_song_data(csv.data);
 
         axios.get('/api/get_limit').then(response => {
             set_credit(response.data['credits_left']);
@@ -188,9 +198,13 @@ export default function Batch() {
             const check_result = await axios.get(`/api/batch_status?run_name=${result.data['run_name']}`);
             const run_status: IRunStatus = check_result.data;
 
+            set_prompt_data(run_status.prompts);
+
             if (run_status.ended) {
                 set_job_count(0);
                 clearInterval(interval);
+
+                set_check_interval(undefined);
             } else {
                 set_job_count(run_status.remaining_count || 0);
             }
@@ -198,7 +212,7 @@ export default function Batch() {
             set_show_run_status(true);
 
             const csv = await axios.get(`/api/fetch_batch_song_data?run_name=${result.data['run_name']}`);
-            set_csv_data(csv.data);
+            set_song_data(csv.data);
 
             axios.get('/api/get_limit').then(response => {
                 set_credit(response.data['credits_left']);
@@ -214,7 +228,7 @@ export default function Batch() {
         <>
             <section className="mx-auto w-full px-4 lg:px-0" >
                 <div className="mx-auto">
-                    <article className="prose lg:prose-l gt-10" style={{maxWidth: '100%', paddingLeft: '5rem', paddingRight: '5rem', marginTop: '1rem', marginBottom: '2rem'}}>
+                    <article className="prose lg:prose-l gt-10" style={{ maxWidth: '100%', paddingLeft: '5rem', paddingRight: '5rem', marginTop: '1rem', marginBottom: '2rem' }}>
                         <h1 className=' text-center text-indigo-900'>
                             Batch Downloader
                         </h1>
@@ -223,52 +237,10 @@ export default function Batch() {
                         </div>
                         {CSVInput(submit_run, credit)}
                         {show_run_status &&
-                            <>
-                                <div className="text-gray-500">
-                                    Run {real_run_name}, {job_count} jobs left. {job_count === 0 ? 'Run finished.' : ''}
-                                </div>
-                                <table style={{ overflowX: 'auto', whiteSpace: 'wrap' }}>
-                                    <thead>
-                                        <tr>
-                                            <th>Index</th>
-                                            <th>Title</th>
-                                            <th>Lyrics</th>
-                                            <th>Status</th>
-                                            <th>Stream</th>
-                                            <th>{job_count == 0 ? <a href={`/api/download_zip?run_name=${real_run_name}`}>Download</a> : 'Download'}</th>
-                                        </tr>
-                                    </thead>
-                                    {csv_data.map((row, index) => {
-                                        if (row['status'] === -1) {
-                                            // Combine Lyrics, Stream, Download to show error message
-                                            return (
-                                                <tr key={index} style={{ borderBottom: '1px solid black', textAlign: 'center' }}>
-                                                    <td>{row['index']}-{row['cnt']}</td>
-                                                    <td>{row['song_id']}</td>
-                                                    <td>{row['error']}</td>
-                                                    <td>{statusMap(row['status'])}</td>
-                                                    <td><a href={row['audio_url']} download>Stream</a></td>
-                                                    <td><a href={row['audio_url']} download>Download</a></td>
-                                                </tr>
-                                            )
-                                        } else {
-                                            return (
-                                                <tr key={index} style={{ borderBottom: '1px solid black' }}>
-                                                    <td>{row['index']}-{row['cnt']}</td>
-                                                    <td>{row['title']}</td>
-                                                    <td>{escapedNewLineToLineBreakTag(row['lyrics'])}</td>
-                                                    <td>{statusMap(row['status'])}</td>
-                                                    <td><a href={row['audio_url']} download>Stream</a></td>
-                                                    <td><a href={row['audio_url']} download>Download</a></td>
-                                                </tr>
-                                            )
-                                        }
-                                    })
-                                    }
-                                </table>
-                            </>
-                        }
-
+                            <div className="text-gray-500">
+                                Run {real_run_name}, {job_count} jobs left. {job_count === 0 ? 'Run finished.' : ''}
+                            </div>}
+                        <Kanban prompts={prompt_data} songs={song_data}></Kanban>
                     </article>
                 </div>
             </section>

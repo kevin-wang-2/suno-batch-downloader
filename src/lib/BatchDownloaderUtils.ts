@@ -42,6 +42,8 @@ export const statusMap = (status: number) => {
             return 'Downloaded';
         case 3:
             return 'Complete';
+        case 4:
+            return 'Waiting';
         case -1:
             return 'Error';
         default:
