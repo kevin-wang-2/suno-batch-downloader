@@ -1,41 +1,11 @@
 import { DEFAULT_MODEL, sunoApi } from "@/lib/SunoApi";
 import csv from "csvtojson";
+import { CSVFormatter } from "./CSVFormatter";
 import fs from "fs";
 import https from "https";
+import { IGeneratePrompt, IRunStatus, IRun, ISong } from "@/lib/BatchDownloaderUtils";
 
 const MAX_WORKER_COUNT = 4;
-
-export interface IGeneratePrompt {
-    run_name: string,
-    index: string,
-    prompt: string,
-    lyrics?: string,
-    make_instrumental?: Boolean,
-    model?: string,
-}
-
-export interface IRunStatus {
-    run_name: string,
-    ended: boolean,
-    remaining_count?: number,
-}
-
-export interface IRun {
-    run_name: string,
-    audio_folder: string,
-    csv_file: string
-}
-
-export interface ICSVRow {
-    index: string,
-    cnt: number,
-    title: string,
-    file_name: string,
-    lyrics: string,
-    song_id: string,
-    audio_url: string,
-    error: string
-}
 
 function getExt(url: string) {
     const index = url.lastIndexOf('.')
@@ -47,160 +17,49 @@ function getExt(url: string) {
     }
 }
 
-class CSVWriter {
-    private fd: number;
-    private header: Array<string> = [];
-
-    constructor(filename: string, append = false) {
-        if (fs.existsSync(filename) && append) {
-            // TODO: Consider the append case
-            throw 'Unimplemented'
-        } else {
-            try {
-                this.fd = fs.openSync(filename, 'w')
-            } catch (e) {
-                console.error(`Cannot Open CSV file ${filename} for write.`)
-                throw e
-            }
-        }
-    }
-
-    _preprocess(item: any) {
-        let stgItem = '';
-        if (typeof item === 'object') {
-            if (item === null) {
-                stgItem = 'null';
-            } else {
-                stgItem = JSON.stringify(item);
-            }
-        } else {
-            stgItem = item.toString();
-        }
-        let needEscape = false;
-        if (stgItem.indexOf('\n') !== -1 || stgItem.indexOf(',') !== -1) {
-            needEscape = true;
-        }
-        if (stgItem.indexOf('"') !== -1) {
-            stgItem = stgItem.replace(/"/g, '""')
-            needEscape = true;
-        }
-        if (needEscape) {
-            return `"${stgItem}"`
-        } else {
-            return stgItem
-        }
-
-    }
-
-    async writeArray(arr: Array<any>) {
-        if (!this.header) throw 'Header not yet set'
-
-        // 1. Format Array into sting
-        let line = this._preprocess(arr[0])
-        for (let i = 1; i < arr.length; i++) {
-            line += `,${this._preprocess(arr[i])}`
-        }
-        line += '\n'
-
-        // 2. Write
-        await new Promise((resolve, reject) => {
-            fs.write(this.fd, line, (err) => {
-                if (err) {
-                    reject(err)
-                } else {
-                    resolve(undefined)
-                }
-            })
-        })
-    }
-
-    async writeObjectLine(obj: any) {
-        if (this.header.length == 0) {
-            const header = []
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    header.push(key)
-                }
-            }
-            await this.setHeader(header)
-        }
-
-        // Write each key in header order
-        let line = this._preprocess(obj[this.header[0]])
-        for (let i = 1; i < this.header.length; i++) {
-            line += `,${this._preprocess(obj[this.header[i]])}`
-        }
-        line += '\n';
-
-        // Write
-        await new Promise((resolve, reject) => {
-            fs.write(this.fd, line, (err) => {
-                if (err) {
-                    reject(err)
-                } else {
-                    resolve(undefined)
-                }
-            })
-        })
-    }
-
-    async setHeader(header: Array<string>) {
-        if (this.header.length != 0) throw 'Header Already Set'
-        this.header = header;
-        await this.writeArray(header)
-    }
-
-    async writeObject(obj: any) {
-        if (this.header.length == 0) {
-            const header = []
-            for (const key in obj) {
-                if (obj.hasOwnProperty(key)) {
-                    header.push(key)
-                }
-            }
-            await this.setHeader(header)
-        }
-        const arr = new Array(this.header.length);
-        for (let i = 0; i < this.header.length; i++) {
-            if (this.header[i].indexOf('.') !== -1) {
-                let seg = obj;
-                for (const part of this.header[i].split('.')) {
-                    if (seg === undefined || seg === null || !seg.hasOwnProperty(part)) {
-                        seg = undefined
-                        break;
-                    }
-                    seg = seg[part];
-                }
-                if (seg === undefined) {
-                    arr[i] = '';
-                } else {
-                    arr[i] = seg;
-                }
-            } else {
-                arr[i] = obj[this.header[i]];
-                if (arr[i] === undefined) {
-                    arr[i] = '';
-                }
-            }
-        }
-        await this.writeArray(arr)
-    }
-
-    async writeList(list: Array<any>) {
-        for (const object of list) {
-            await this.writeObject(object);
-        }
-    }
-
-    disconnect() {
-        fs.closeSync(this.fd)
-    }
-}
-
 class Downloader {
     private queue: Array<IGeneratePrompt> = [];
-    private run_counts: Map<string, number> = new Map();
-    private run_csvs: Map<string, CSVWriter> = new Map();
+
+    private run_song_data: Map<string, Array<ISong>> = new Map();
+    private run_info: Map<string, IRunStatus> = new Map();
+
+    insert_song(song_info: ISong, run_name: string) {
+        if (!this.run_song_data.has(run_name) || !this.run_info.has(run_name)) {
+            throw 'Run Not Found';
+        }
+        this.run_song_data.get(run_name)?.push(song_info);
+        return this.run_song_data.get(run_name)?.length || 1 - 1;
+    }
+
+    song_generation_update(song_index: number, run_name: string, status: number, song_info?: ISong) {
+        if (!this.run_song_data.has(run_name)) {
+            throw 'Run Not Found';
+        }
+        const run_song_list = this.run_song_data.get(run_name);
+        if (!run_song_list) {
+            throw 'Run Not Found';
+        }
+        if (song_info) {
+            run_song_list[song_index] = song_info;
+        }
+        run_song_list[song_index].status = status;
+    }
+
+    download_finished(run_name: string) {
+        const run_info = this.run_info.get(run_name);
+        if (!run_info) {
+            throw 'Run Not Found';
+        }
+        const remaining_count = run_info?.remaining_count || 1;
+        if (remaining_count === 1) {
+            run_info.remaining_count = 0;
+            run_info.ended = true;
+            return true;
+        } else {
+            run_info.remaining_count = remaining_count - 1;
+            return false;
+        }
+    }
 
     async worker(id: number) {
         while (1) {
@@ -217,6 +76,8 @@ class Downloader {
             if (!item) {
                 throw 'Impossible'
             }
+
+            item.status = 0;
             const run_name = item.run_name;
 
             // 4. Start generating this job
@@ -249,37 +110,30 @@ class Downloader {
             }
 
             // 5. Handle generation error
-            const csv_writer = this.run_csvs.get(run_name);
-            if (!csv_writer) throw 'Impossible';
 
             if (content[0].status === 'error') {
                 for (let i = 0; i < content.length; i++) {
-                    await csv_writer.writeObjectLine({
+                    this.insert_song({
                         index: item.index,
                         cnt: i,
                         title: content[i]["title"],
-                        file_name: "",
                         lyrics: content[i]["lyric"],
                         song_id: content[i]["id"],
                         audio_url: content[i]["audio_url"],
-                        error: content[0].error_message
-                    });
+                        error: "Generation Error: " + content[i]["error_message"] || "",
+                        status: -1
+                    }, run_name);
                 }
 
                 await new Promise(res => setTimeout(res, 1000));
                 console.log(`[Worker ${id}] ${item.index} Error`);
 
-                const remaining_count = this.run_counts.get(run_name) || 1;
-                if (remaining_count == 1) {
-                    this.run_counts.delete(run_name);
-                    this.run_csvs.get(run_name)?.disconnect();
-                    this.run_csvs.delete(run_name);
+                item.status = -1;
+                this.download_finished(run_name);
 
-                    console.log(`[Worker ${id}] Run ${run_name} Done`);
-                } else {
-                    this.run_counts.set(run_name, remaining_count - 1);
-                }
                 continue;
+            } else {
+                item.status = 1;
             }
             console.log(`[Worker ${id}] ${item.index} Generated`);
 
@@ -288,6 +142,18 @@ class Downloader {
             for (let i = 0; i < content.length; i++) {
                 const audio_url = content[i]["audio_url"] || "";
                 const file_name = `${item.index}-${i}.mp3`;
+                const song = {
+                    index: item.index,
+                    cnt: i,
+                    title: content[i]["title"],
+                    lyrics: content[i]["lyric"],
+                    song_id: content[i]["id"],
+                    audio_url: audio_url,
+                    error: "",
+                    status: 1
+                }
+
+                const song_index = this.insert_song(song, run_name);
 
                 console.log(`[Worker ${id}] Download: ${item.index} - ${i} Start`)
 
@@ -307,38 +173,19 @@ class Downloader {
                         });
                     })
                 })).then(() => {
-                    return csv_writer.writeObjectLine({
-                        index: item.index,
-                        cnt: i,
-                        title: content[i]["title"],
-                        file_name: file_name,
-                        lyrics: content[i]["lyric"],
-                        song_id: content[i]["id"],
-                        audio_url: audio_url,
-                        error: ""
-                    })
-                }).then(() => {
+                    song.status = 2;
                     console.log(`[Worker ${id}] Download: ${item.index} - ${i} Done`)
                 }).catch((e) => {
                     console.error(`[Worker ${id}] Download: ${item.index} - ${i} Failed log dump`);
                     // Write to log
                     fs.appendFileSync('./src/resources/downloads/download/download_error.txt', `${item.index} - ${i} ${content[i]["title"]}\n${e.toString()}, id: ${content[i]["song_id"]}\n`);
-
-
-                    return csv_writer.writeObjectLine({
-                        index: item.index,
-                        cnt: i,
-                        title: content[i]["title"],
-                        file_name: "",
-                        lyrics: content[i]["lyric"],
-                        song_id: content[i]["id"],
-                        audio_url: audio_url,
-                        error: "Download Failed"
-                    })
+                    song.status = -1;
+                    song.error = 'Download Error: ' + e.toString();
                 }));
             }
 
             await Promise.allSettled(download_promises);
+            item.status = 2;
 
             // 7. Wait till status becomes complete
             while (1) {
@@ -353,21 +200,11 @@ class Downloader {
                     continue;
                 }
             }
+            item.status = 3;
             
             console.log(`[Worker ${id}] ${item.index} Done`);
 
-            const remaining_count = this.run_counts.get(run_name) || 1;
-            if (remaining_count == 1) {
-                this.run_counts.delete(run_name);
-                this.run_csvs.get(run_name)?.disconnect();
-                this.run_csvs.delete(run_name);
-
-                console.log(`[Worker ${id}] Run ${run_name} Done`);
-            } else {
-                this.run_counts.set(run_name, remaining_count - 1);
-            }
-
-            
+            this.download_finished(run_name);
         }
     }
 
@@ -395,47 +232,53 @@ class Downloader {
         this.queue = this.queue.concat(queue);
 
         // 3. Create items in maps
-        this.run_counts.set(run_name, queue.length);
-        this.run_csvs.set(run_name, new CSVWriter(`./src/resources/downloads/${run_name}.csv`));
+
+        this.run_info.set(run_name, {
+            run_name,
+            ended: false,
+            remaining_count: queue.length,
+            prompts: queue
+        });
+        this.run_song_data.set(run_name, []);
 
         const run: IRun = {
             run_name,
             audio_folder: `./src/resources/downloads/download-${run_name}`,
             csv_file: `./src/resources/downloads/${run_name}.csv`
         }
-
         return run;
     }
 
     async check_run_status(run_name: string) {
-        if (!this.run_counts.has(run_name)) {
-            return {
-                run_name,
-                ended: true
-            }
-        } else {
-            return {
-                run_name,
-                ended: false,
-                remaining_count: this.run_counts.get(run_name)
-            }
+        if (!this.run_info.has(run_name)) {
+            throw 'Run Not Found';
         }
+        return this.run_info.get(run_name);
     }
 
     async get_all_running_jobs() {
-        const result: Array<IRunStatus> = [];
-        this.run_counts.forEach((value, key) => {
-            result.push({
-                run_name: key,
-                ended: false,
-                remaining_count: value
-            })
-        });
-        return result;
+        return Array.from(this.run_info.values()).filter((item) => !item.ended);
     }
 
     get_run_csv(run_name: string) {
+        // 1. Write to CSV
+        const csv_text = CSVFormatter(this.run_song_data.get(run_name) || []);
+        fs.writeFileSync(`./src/resources/downloads/${run_name}.csv`, csv_text);
         return `./src/resources/downloads/${run_name}.csv`
+    }
+
+    get_run_song_data(run_name: string) {
+        if (!this.run_song_data.has(run_name)) {
+            throw 'Run Not Found';
+        }
+        return this.run_song_data.get(run_name) || [];
+    }
+
+    get_run_prompt_status(run_name: string) {
+        if (!this.run_info.has(run_name)) {
+            throw 'Run Not Found';
+        }
+        return this.run_info.get(run_name)?.prompts;
     }
 
     get_audio_folder(run_name: string) {

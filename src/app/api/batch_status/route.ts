@@ -11,25 +11,35 @@ export async function GET(req: NextRequest) {
 
     if (run_name === null) {
 
-        const jobs = await downloader().get_all_running_jobs();
+      const jobs = await downloader().get_all_running_jobs();
 
-        return new NextResponse(JSON.stringify(jobs), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              ...corsHeaders
-            }
-          });
+      return new NextResponse(JSON.stringify(jobs), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      });
     } else {
+      try {
         const info = await downloader().check_run_status(run_name);
 
         return new NextResponse(JSON.stringify(info), {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              ...corsHeaders
-            }
-          });
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        });
+      } catch (error) {
+        return new NextResponse(JSON.stringify({ error: error }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        });
+      }
     }
   } else {
     return new NextResponse('Method Not Allowed', {

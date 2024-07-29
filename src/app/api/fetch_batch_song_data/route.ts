@@ -13,10 +13,10 @@ export async function GET(req: NextRequest) {
         const run_name = url.searchParams.get('run_name') || '';
 
 
-        const filename = downloader().get_run_csv(run_name);
 
         if (url.searchParams.has('format') && url.searchParams.get('format') === 'csv') {
             // Return raw CSV file
+            const filename = downloader().get_run_csv(run_name);
             const csv_string = fs.readFileSync(filename, 'utf-8');
 
             return new NextResponse(csv_string, {
@@ -27,22 +27,22 @@ export async function GET(req: NextRequest) {
                 }
             });
         } else {
-            // Read the CSV file
+            // Get Data
             try {
-                const csv_json = await csv().fromFile(filename);
+                const info = downloader().get_run_song_data(run_name);
 
-                return new NextResponse(JSON.stringify(csv_json), {
+                return new NextResponse(JSON.stringify(info), {
                     status: 200,
                     headers: {
-                        'Content-Type': 'application/json; charset=utf-8',
+                        'Content-Type': 'application/json',
                         ...corsHeaders
                     }
                 });
             } catch (error) {
-                return new NextResponse(JSON.stringify([]), {
+                return new NextResponse(JSON.stringify({ error: error }), {
                     status: 200,
                     headers: {
-                        'Content-Type': 'application/json; charset=utf-8',
+                        'Content-Type': 'application/json',
                         ...corsHeaders
                     }
                 });

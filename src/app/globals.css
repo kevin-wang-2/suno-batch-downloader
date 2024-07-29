@@ -18,6 +18,11 @@ body {
     rgb(var(--background-start-rgb));
 }
 
+th, td {
+  text-align: center;
+  word-wrap: break-word;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
