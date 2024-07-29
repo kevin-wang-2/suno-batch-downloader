@@ -420,6 +420,8 @@ const newSunoApi = async (cookie: string) => {
   if (!global.sunoApi) {
     const sunoApi = new SunoApi(cookie);
     const api = await sunoApi.init();
+    // @ts-ignore
+    global.sunoApi = api;
   }
   // @ts-ignore
   return global.sunoApi;
